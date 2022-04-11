@@ -129,16 +129,17 @@ app.post("/welcome", auth, (req, res) => {
 );
 
 // ############################ Patch ############################
-app.patch("/updateUser", async (req, res) => {
+app.patch("/updateUser", async(req, res) => {
 	try {
-		const { email, changes } = req.body;
+		const { email, password, changes } = req.body;
 		if (!(email && changes)) {
 			res.status(400).send("Path method: email is empty or there is no change to patch!!!");
 		}
 		// Check if user already exist in DB
 		const user = await User.findOne({ email });
 		if (user && bcrypt.compare(password, user.password)) {
-			const doc = await User.findByIdAndUpdate(email, changes);
+			const doc = await User.findOneAndUpdate({ email }, changes);
+			console.log(doc);
 			if (doc) {
 				return res.status(200).send(doc);
 			}
