@@ -1,3 +1,5 @@
+// jshint esversion:6
+
 const jwt 	= require("jsonwebtoken");
 const config    = process.env;
 
