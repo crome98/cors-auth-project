@@ -10,9 +10,9 @@ const app       = express();
 const User      = require("./model/user");
 const auth      = require("./middleware/auth");
 
-app.use(express.json());
+app.use(express.json()); // Loading middleware function express.json()
 
-//Register
+// ############################ Register ############################
 app.post("/register", async (req, res) => {
 	try {
 		// Get user input
@@ -64,8 +64,7 @@ app.post("/register", async (req, res) => {
 	}
 });
 
-
-//Login
+// ############################ Login ############################
 app.post("/login", async (req, res) => {
 	const { email, password} = req.body;
 
@@ -98,7 +97,32 @@ app.post("/login", async (req, res) => {
 
 });
 
-// Welcome
+// ############################ Delete ############################
+
+app.delete("/deleteUser", async(req, res) => {
+	try {
+		const { email, password } = req.body;
+		console.log(email, password);
+		if (!(email && password)) {
+			res.status(400).send("Both email and password are required");
+		}
+		// Check if user already exist in DB
+		const user = await User.findOne({ email });
+		if (user && bcrypt.compare(password, user.password)) {
+			const result = await user.deleteOne();
+			console.log("Delete count", result);
+			if (result !== null) {
+				res.status(200).send("Delete user Successfully ^_^");
+			}
+		} else {
+			res.status(400).send("User do not exist or wrong password!!!");
+		}
+	} catch (err) {
+		console.log(err.message);
+	}
+});
+
+// ############################ Welcome ############################
 app.post("/welcome", auth, (req, res) => {
 	res.status(200).send("Welcome to Me ^*^");
 }
