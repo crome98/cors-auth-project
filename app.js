@@ -1,8 +1,8 @@
 //jshint esversion:8
 
 require("dotenv").config();
-require("./config/database").connect();
-
+// require("./config/database").connect(); // This is used for mongoose
+const connPool  = require("./config/database").pool;
 const bcrypt    = require("bcryptjs");
 const jwt       = require("jsonwebtoken");
 const express   = require("express");
@@ -14,6 +14,7 @@ app.use(express.json()); // Loading middleware function express.json()
 
 // ############################ Register ############################
 app.post("/register", async (req, res) => {
+	let conn;
 	try {
 		// Get user input
 		const {firstName, lastName, email, password} = req.body;
@@ -23,45 +24,49 @@ app.post("/register", async (req, res) => {
 			return res.status(400).send("All input is required");
 		}
 
-		// Check if user already exist in DB
-		const oldUser = await User.findOne({ email });
-
-		if (oldUser) {
-			console.log("User exists");
-			return res.status(409).send("User Already Exist. Please login");
+		conn = await connPool.getConnection();
+		if (!conn) {
+			return res.status(500).send("Can not connect to DB");
 		}
 
-		// If new user => create new user in DB, but at first, we need to encrypt the
-		// user's password
-		encryptedPassword = await bcrypt.hash(password, 10);
+		// Check that this is new user or not
+		const result = await conn.query(`SELECT * FROM users
+			WHERE email = ?`, [email]);
+		console.log(result.length);
+		if (result.length > 0) { // If the first object in result array contains meta => User not exist!
+			return res.status(400).send("User already exists, please login ^v^");
+		}
 
-		// Create user in DB
-		const user = await User.create({
-			first_name: firstName,
-			last_name: lastName,
-			email: email.toLowerCase(),
-			password: encryptedPassword,
-		});
-
+		// encrypt user password before saving it to DB
+		const encryptedPassword = await bcrypt.hash(password, 10);
+		console.log(encryptedPassword.length);
 		// Create token
 		const token = jwt.sign(
-			{
-				user_id: user._id, email // _id is the id of user in db
-			},
-			process.env.TOKEN_KEY,
-			{
-				expiresIn: "5h",
-			},
+				{
+					firstName, email // _id is the id of user in db
+				},
+				process.env.TOKEN_SECRET,
+				{
+					expiresIn: "5h",
+				},
 		);
+		console.log(token.length);
+		// Create new user
+		const insertResult = await conn.query(`INSERT INTO users
+			(first_name, last_name, email, password, token)
+			value (?, ?, ?, ?, ?)`, [firstName, lastName, email, encryptedPassword, token]);
 
-		// Save user token
-		user.token = token;
-
-		// Return new user
-		res.status(201).json(user);
-	} catch (err) {
-		console.log(err);
+		if(insertResult.affectedRows === 1) {
+			return res.status(200).send("Registered!!!");
+		} else {
+			throw new Error("Register: Can not insert user to db!!!");
+		}
+	} catch (error) {
+		return res.status(400).send(error);
 	}
+ 	finally {
+ 			if (conn) {	conn.end(); } // Always close connection
+ 	}
 });
 
 // ############################ Login ############################
@@ -151,4 +156,6 @@ app.patch("/updateUser", async(req, res) => {
 
 	}
 });
+
+
 module.exports = app;
