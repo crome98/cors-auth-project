@@ -11,24 +11,21 @@ const User      = require("./model/user");
 const auth      = require("./middleware/auth");
 
 app.use(express.json()); // Loading middleware function express.json()
-
 // ############################ Register ############################
 app.post("/register", async (req, res) => {
 	let conn;
 	try {
-		// Get user input
+		// Deconstruct user's information from req.body
 		const {firstName, lastName, email, password} = req.body;
-
 		// Validate user input
 		if (!(email && password && firstName && lastName)) {
 			return res.status(400).send("All input is required");
 		}
-
+		// Get connection to DB
 		conn = await connPool.getConnection();
 		if (!conn) {
 			return res.status(500).send("Can not connect to DB");
 		}
-
 		// Check that this is new user or not
 		const result = await conn.query(`SELECT * FROM users
 			WHERE email = ?`, [email]);
@@ -39,7 +36,6 @@ app.post("/register", async (req, res) => {
 
 		// encrypt user password before saving it to DB
 		const encryptedPassword = await bcrypt.hash(password, 10);
-		console.log(encryptedPassword.length);
 		// Create token
 		const token = jwt.sign(
 				{
@@ -50,7 +46,6 @@ app.post("/register", async (req, res) => {
 					expiresIn: "5h",
 				},
 		);
-		console.log(token.length);
 		// Create new user
 		const insertResult = await conn.query(`INSERT INTO users
 			(first_name, last_name, email, password, token)
