@@ -115,25 +115,41 @@ app.post("/login", async (req, res) => {
 // ############################ Delete ############################
 
 app.delete("/deleteUser", async(req, res) => {
+	let conn;
 	try {
 		const { email, password } = req.body;
-		console.log(email, password);
 		if (!(email && password)) {
 			res.status(400).send("Both email and password are required");
 		}
-		// Check if user already exist in DB
-		const user = await User.findOne({ email });
-		if (user && bcrypt.compare(password, user.password)) {
-			const result = await user.deleteOne();
-			console.log("Delete count", result);
-			if (result !== null) {
-				res.status(200).send("Delete user Successfully ^_^");
-			}
-		} else {
-			res.status(400).send("User do not exist or wrong password!!!");
+		// Get connection to DB
+		conn = await connPool.getConnection();
+		if (!conn) {
+			return res.status(500).send("Can not connect to DB");
 		}
+		// Check that this is new user or not
+		const result1 = await conn.query(`SELECT * FROM users
+			WHERE email = ?`, [email]);
+		if (result1.length === 0) { // If the first object in result array contains meta => User not exist!
+			console.log(`${email} does not exist, please register T_T`);
+			return res.status(400).send(`User with email ${email} does not exist, please register T_T`);
+		}
+		const user = result1[0];
+		if (bcrypt.compare(password, user.password)) {
+			const deleteResult = await conn.query(`
+				DELETE FROM users WHERE email = ?`, [email]);
+			console.log("Delete count", deleteResult);
+			if (deleteResult.affectedRows === 1) {
+				return res.status(200).send("Delete user Successfully ^_^");
+			} else {
+				return res.status(400).send("Can not delete user!!!");
+			}
+		}
+		return res.status(400).send(`Delete user: password for user with email ${email} is not correct!!!`);
 	} catch (err) {
-		console.log(err.message);
+		console.log(`Error: ${err}`);
+		return res.status(400).json(err);
+	} finally {
+		if (conn) { conn.end(); }
 	}
 });
 
