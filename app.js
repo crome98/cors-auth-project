@@ -29,7 +29,6 @@ app.post("/register", async (req, res) => {
 		// Check that this is new user or not
 		const result = await conn.query(`SELECT * FROM users
 			WHERE email = ?`, [email]);
-		console.log(result.length);
 		if (result.length > 0) { // If the first object in result array contains meta => User not exist!
 			return res.status(400).send("User already exists, please login ^v^");
 		}
@@ -66,35 +65,51 @@ app.post("/register", async (req, res) => {
 
 // ############################ Login ############################
 app.post("/login", async (req, res) => {
-	const { email, password} = req.body;
-
-	// Check inputs
-	if (!(email && password)) {
-		res.status(400).send("Both email and password are required");
-	}
-
-	// Check if user already exist in DB
-	const user = await User.findOne({ email });
-
-	if (user && bcrypt.compare(password, user.password)) {
-			// Create token
-			const token = jwt.sign(
-				{user_id: user._id, email},
-				process.env.TOKEN_KEY,
-				{
-					expiresIn: "5h",
+	try {
+		const { email, password} = req.body;
+		// Check inputs
+		if (!(email && password)) {
+			res.status(400).send("Both email and password are required");
+		}
+		// Get connection to DB
+		conn = await connPool.getConnection();
+		if (!conn) {
+			return res.status(500).send("Can not connect to DB");
+		}
+		// Check that this is new user or not
+		const result1 = await conn.query(`SELECT * FROM users
+			WHERE email = ?`, [email]);
+		if (result1.length === 0) { // If the first object in result array contains meta => User not exist!
+			return res.status(400).send("User does not exist, please register T_T");
+		}
+		// Check if user already exist in DB
+		const user = result1[0];
+		if (await bcrypt.compare(password, user.password)) {
+				// Create token
+				const token = jwt.sign(
+					{userName: user.firstName, email},
+					process.env.TOKEN_SECRET,
+					{
+						expiresIn: "5h",
+					}
+				);
+				const updateRs = await conn.query(`
+					UPDATE users SET token = ?
+					WHERE email = ?`, [token, email]);
+				// Return user
+				if (updateRs.affectedRows === 1) {
+					console.log(`User: ${user.first_name} Login successful, new token: ${token}`);
+					return res.status(200).json(user);
+				} else {
+					return res.status(400).send("Login: Could not update user token!!!");
 				}
-			);
-
-			// Save user token
-			user.token = token;
-
-			// Return user
-			console.log(`User: ${user.first_name} Login successful, token will expire after ${token}`);
-			return res.status(200).json(user);
+		}
+		return res.status(400).send("Invalid Credentials");
+	} catch (error) {
+		return res.status(400).json(error);
+	} finally {
+		if (conn) { conn.end(); }
 	}
-	return res.status(400).send("Invalid Credentials");
-
 });
 
 // ############################ Delete ############################
