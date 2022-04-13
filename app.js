@@ -65,6 +65,7 @@ app.post("/register", async (req, res) => {
 
 // ############################ Login ############################
 app.post("/login", async (req, res) => {
+	let conn;
 	try {
 		const { email, password} = req.body;
 		// Check inputs
