@@ -32,7 +32,6 @@ app.post("/register", async (req, res) => {
 		if (result.length > 0) { // If the first object in result array contains meta => User not exist!
 			return res.status(400).send("User already exists, please login ^v^");
 		}
-
 		// encrypt user password before saving it to DB
 		const encryptedPassword = await bcrypt.hash(password, 10);
 		// Create token
@@ -49,14 +48,17 @@ app.post("/register", async (req, res) => {
 		const insertResult = await conn.query(`INSERT INTO users
 			(first_name, last_name, email, password, token)
 			value (?, ?, ?, ?, ?)`, [firstName, lastName, email, encryptedPassword, token]);
-
+		// Check if user is created
 		if(insertResult.affectedRows === 1) {
-			return res.status(200).send("Registered!!!");
+			const userInfo = await conn.query(`SELECT * FROM users
+				WHERE email = ?`, [email]);
+			const user = userInfo[0];
+			return res.status(200).json(user);
 		} else {
 			throw new Error("Register: Can not insert user to db!!!");
 		}
 	} catch (error) {
-		return res.status(400).send(error);
+		return res.status(400).json(error);
 	}
  	finally {
  			if (conn) {	conn.end(); } // Always close connection
