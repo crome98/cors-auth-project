@@ -2,25 +2,25 @@
 
 require("dotenv").config();
 // require("./config/database").connect(); // This is used for mongoose
-const connPool  = require("./config/database").pool;
-const bcrypt    = require("bcryptjs");
-const jwt       = require("jsonwebtoken");
-const express   = require("express");
-const app       = express();
-const User      = require("./model/user");
-const auth      = require("./middleware/auth");
+const connPool          = require("./config/database").pool;
+const bcrypt            = require("bcryptjs");
+const jwt               = require("jsonwebtoken");
+const express           = require("express");
+const app               = express();
+const auth              = require("./middleware/auth");
+const validateUserInfo  = require("./validation/usersInfoValidation");
 
 app.use(express.json()); // Loading middleware function express.json()
 // ############################ Register ############################
-app.post("/register", async (req, res) => {
+app.post("/register", validateUserInfo, async (req, res) => {
 	let conn;
 	try {
-		// Deconstruct user's information from req.body
-		const {firstName, lastName, email, password} = req.body;
-		// Validate user input
-		if (!(email && password && firstName && lastName)) {
-			return res.status(400).send("All input is required");
-		}
+    const data = {
+      firstName: req.body.firstName,
+      lastName : req.body.lastName,
+      email    : req.body.email,
+      password : req.body.password,
+    };
 		// Get connection to DB
 		conn = await connPool.getConnection();
 		if (!conn) {
@@ -28,12 +28,12 @@ app.post("/register", async (req, res) => {
 		}
 		// Check that this is new user or not
 		const result = await conn.query(`SELECT * FROM users
-			WHERE email = ?`, [email]);
-		if (result.length > 0) { // If the first object in result array contains meta => User not exist!
+			WHERE email = ?`, [data.email]);
+		if (result.length > 0) {
 			return res.status(400).send("User already exists, please login ^v^");
 		}
 		// encrypt user password before saving it to DB
-		const encryptedPassword = await bcrypt.hash(password, 10);
+		const encryptedPassword = await bcrypt.hash(data.password, 10);
 		// Create token
 		const token = jwt.sign(
 				{
@@ -47,7 +47,7 @@ app.post("/register", async (req, res) => {
 		// Create new user
 		const insertResult = await conn.query(`INSERT INTO users
 			(first_name, last_name, email, password, token)
-			value (?, ?, ?, ?, ?)`, [firstName, lastName, email, encryptedPassword, token]);
+			value (?, ?, ?, ?, ?)`, [data.firstName, data.lastName, data.email, encryptedPassword, token]);
 		// Check if user is created
 		if(insertResult.affectedRows === 1) {
 			const userInfo = await conn.query(`SELECT * FROM users
@@ -164,27 +164,47 @@ app.post("/welcome", auth, (req, res) => {
 
 // ############################ Patch ############################
 app.patch("/updateUser", async(req, res) => {
+	let conn;
 	try {
 		const { email, password, changes } = req.body;
 		if (!(email && changes)) {
-			res.status(400).send("Path method: email is empty or there is no change to patch!!!");
+			res.status(400).send("Path method: email, password, and changes should be provided to patch!!!");
 		}
-		// Check if user already exist in DB
-		const user = await User.findOne({ email });
-		if (user && bcrypt.compare(password, user.password)) {
-			const doc = await User.findOneAndUpdate({ email }, changes);
-			console.log(doc);
-			if (doc) {
-				return res.status(200).send(doc);
+		// Get connection to DB
+		conn = await connPool.getConnection();
+		if (!conn) {
+			return res.status(500).send("Can not connect to DB");
+		}
+		// Check that this is new user or not
+		const result1 = await conn.query(`SELECT * FROM users
+			WHERE email = ?`, [email]);
+		if (result1.length === 0) { // If the first object in result array contains meta => User not exist!
+			console.log(`${email} does not exist, please register ^^`);
+			return res.status(400).send(`User with email ${email} does not exist, please register T_T`);
+		}
+		const user = result1[0];
+		if (bcrypt.compare(password, user.password)) {
+			let cols = "";
+			let sql = `UPDATE users set`;
+			for (const key of Object.keys(changes)) {
+				sql += ` ${key}=?`;
+				if (Object.keys(changes).indexOf(key) !== Object.keys(changes).length - 1) {
+						sql += ",";
+				}
+			}
+			sql += ` where email='${email}'`;
+			const updateResult = await conn.query(sql, [Object.values(changes)]);
+			console.log(updateResult);
+			if (updateResult) {
+				return res.status(200).send("Updated");
 			}
 		}
 		return res.status(400).send("Path method: User do not exist!!! Can not apply patch!!!");
 	} catch (err) {
 		console.log(err);
 	} finally {
-
+		if (conn) { conn.end(); }
 	}
 });
-
 
 module.exports = app;
